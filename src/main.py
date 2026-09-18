@@ -1,27 +1,31 @@
+
+#Database handling to be added through .env   
+#Import dotenv and os modules
+
 import random
 
-fetch_result1 = (["aAa", "fi"], ["bbb", "de"], ["ccC", "fi"], ["DDD", "de"], ["565", "fi"], ["343", "de"])
-fetch_result=list(fetch_result1)
+fetch_result1 = (["aAa", "fi"], ["bbb", "de"], ["ccC", "fi"], ["DDD", "de"], ["565", "fi"], ["343", "de"]) #Example dataset used for basic debugging and testing
+fetch_result=list(fetch_result1)  #converting tuple into a list as SQL db output is a tuple
 
+
+#Random logic for airport to be "removable" has to be changed to have about 20% rate
 for item in fetch_result:
     if random.randrange(1, 4) % 2 == 0:
         item.append(True)
     else:
          item.append(False)
 
+#core game variables
 round_count = 1
 player_score = 1
 
 
 while True:
     
-    icao_list = [] 
+    icao_list = [] #list used for value comparison
     
     
     for row in fetch_result:
-        if fetch_result == []:
-            print("Empty list")
-            break
         print(f"ICAO code : {row[0]} country: {row[1]}  {'x' if row[2] == True else ' ' }")
       
     for item in fetch_result:
@@ -34,21 +38,22 @@ while True:
 
     
     if usr_input in icao_list:
+        
         print(f'\n'+"That was correct!"+'\n')
         print(f"Your score is: {player_score}"+'\n')
+        
         for item in fetch_result:
             if item[0] == usr_input:
                index_check = fetch_result.index(item)
                fetch_result.pop(index_check)
+               
         player_score = player_score+1
         round_count = round_count +1                   
-        
-            
     else:
         print("Game Over")
         break
            
-    icao_list = []
+    icao_list = [] #created once more as for some reason I was unable to check it's length when it was higher 
 
     for item in fetch_result:
         if item[2] == True:
