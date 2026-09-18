@@ -53,12 +53,12 @@ The DB we'll use is the airports DB from our SQL course, but we'll want each of 
 - [ ] Function to check win condition (complete 5 rounds)
 
 ## game loop & io (maksym)
-- [ ] Main game loop that runs 5 rounds
-- [ ] After each round, print score / progress
-- [ ] After 5 rounds, display victory message
-- [ ] Handle game-over if player fails a round (optional)
-- [ ] Clean console output formatting (clear, readable airport list)
-- [ ] Input handling with Enter to submit each airport name
-- [ ] Case-insensitive matching for airport names (nice-to-have)
-- [ ] Test with a small seed dataset to verify game flow
+- [x] Main game loop that runs 5 rounds
+- [x] After each round, print score / progress
+- [x] After 5 rounds, display victory message
+- [x] Handle game-over if player fails a round (optional)
+- [x] Clean console output formatting (clear, readable airport list)
+- [x] Input handling with Enter to submit each airport name
+- [x] Case-insensitive matching for airport names (nice-to-have)
+- [x] Test with a small seed dataset to verify game flow
 - [ ] Add error handling (e.g., empty database, invalid input)
