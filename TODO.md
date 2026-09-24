@@ -33,32 +33,17 @@ We'll also want a little intro message that explains the "lore", eg. `You are th
 We can have everything in just 1 file.
 The DB we'll use is the airports DB from our SQL course, but we'll want each of us to make a local copy of it, so we don't break the original (in-case we need a backup).
 
-## Database & Data Layer (pham)
-- [ ] Write function to connect to the airport database
-- [ ] Write function to fetch N random airports from the database (filtering already exploded ones)
-- [ ] Function to select 10 random airports from the database
-- [ ] Function to display the 10 airports and their countries to the player
-  - For this, we'd have it be like "KRYG, Kazakhstan (X)", where (X) denotes that the airport is infected
-- [ ] Function to randomly choose 1–3 airports to "infect" (the ones the player must type)
+## (pham)
 
-## Game Logic (zeynab)
-- [ ] Function to run a single round:
-  - [ ] Show the 10 airports
-  - [ ] Reveal which airports are infected
-  - [ ] Prompt the player to type each infected airport name (Enter to submit)
-  - [ ] Check if typed name matches the infected airport
-  - [ ] Handle a timer / time limit per round (optional but nice)
-  - [ ] Mark the airport as "exploded" on success
-- [ ] Function to track score across rounds
-- [ ] Function to check win condition (complete 5 rounds)
+## (zeynab)
+1. create sql script which creates a table containing save-files.
+pkey: number,
+name: varchar,
+score: varchar,
+did_win: boolean,
+2. when loading the program, fetch the savefiles, display highscores
+3. after the user finishes a game, ask them for their name, and store the name and score in the database.
+4. make sure that the table is only created if it does not already exist
+5. explain how to source the `.sql` file into the project so that the teachers and other developers can update their local databases
 
-## game loop & io (maksym)
-- [x] Main game loop that runs 5 rounds
-- [x] After each round, print score / progress
-- [x] After 5 rounds, display victory message
-- [x] Handle game-over if player fails a round (optional)
-- [x] Clean console output formatting (clear, readable airport list)
-- [x] Input handling with Enter to submit each airport name
-- [x] Case-insensitive matching for airport names (nice-to-have)
-- [x] Test with a small seed dataset to verify game flow
-- [ ] Add error handling (e.g., empty database, invalid input)
+## (maksym)
