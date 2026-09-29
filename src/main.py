@@ -1,5 +1,4 @@
-
-#Database handling to be added through .env   
+#Database handling to be added through .env
 #Import dotenv and os modules
 
 import random
@@ -11,7 +10,7 @@ from dotenv import load_dotenv
 import mysql.connector
 
 load_dotenv()
-#Remember to have same kay namees in your .env file
+#Remember to have same key names in your .env file
 connection = mysql.connector.connect(
     host = os.getenv("HOST"),
     user = os.getenv("USER"),
@@ -27,11 +26,11 @@ try:
     cursor.execute(sql)
     db_fetch_result = cursor.fetchall()
 except:
-    
+
     if cursor.rowcount == 0:
-        print("check SQL command")
+        print("Check SQL command")
     elif connection.cursor != True:
-        print("check db credentials, if they are in the .env under the same names as in connection script")
+        print("Check db credentials, they must match the names used in the .env file")
         quit()
 
 fetch_to_list = []
@@ -46,10 +45,42 @@ for index, item in enumerate(db_fetch_result):
     index_list.append(index)
 
 
+# ===== NEW: CHOOSE GAME MODE =====
+# mode_map maps the player's choice (1/2/3) to (how many correct answers, seconds allowed per round)
+mode_map = {
+    "1": (1, 50),   # Easy:   1 correct answer,  50 seconds per round
+    "2": (3, 40),   # Medium: 3 correct answers, 40 seconds per round
+    "3": (5, 30),   # Hard:   5 correct answers, 30 seconds per round
+}
+
+print("Choose a game mode:")
+print("1 - Easy   (1 correct answer,  50 seconds per round)")
+print("2 - Medium (3 correct answers, 40 seconds per round)")
+print("3 - Hard   (5 correct answers, 30 seconds per round)")
+
+while True:
+    mode_choice = input("Enter mode (1/2/3): ").strip()
+    if mode_choice in mode_map:
+        num_true, round_time_limit = mode_map[mode_choice]
+        break
+    print("Please enter 1, 2 or 3.")
+# ===== END NEW =====
+
+
 #core game list function, previously was made into 2 separate loops. Now can be called from inside the loop main loop.
 # 7 items are best to show imo as it seems to be ideal range where you can see whole list, without needing to scroll
 
-def generate_fetch_result():
+# ===== NEW: split the "mark one correct answer" logic into its own function =====
+# This function randomly picks one airport that is NOT yet marked True, and marks it True.
+# If everything is already True, it does nothing (avoids random.choice on an empty list).
+def mark_one_correct(fetch_result):
+    unmarked = [i for i, item in enumerate(fetch_result) if item[2] == False]
+    if unmarked:
+        chosen = random.choice(unmarked)
+        fetch_result[chosen][2] = True
+# ===== END NEW =====
+
+def generate_fetch_result(num_true):
     fetch_result = [] #main list used for printing data and data comparison
 
     while len(fetch_result) < 7:
@@ -63,80 +94,96 @@ def generate_fetch_result():
             fetch_result.append(fetch_to_list[rand_index])
         except:
             pass
-   
-    for item in fetch_result:
-        item.append(random.randrange(1, 8) % 4 == 0)
 
-    #random item is going to be set true if previous rand range did not work, does happen for some reason
-    if not any(item[2]==True for item in fetch_result):
-        rand_index = random.randint(0, len(fetch_result)-1)
-        fetch_result[rand_index][2] = True
+    # Initialize everything as False first
+    for item in fetch_result:
+        item.append(False)
+
+    # ===== NEW: call mark_one_correct num_true times =====
+    # mode 1 -> called once, mode 2 -> called 3 times, mode 3 -> called 5 times
+    for _ in range(num_true):
+        mark_one_correct(fetch_result)
+    # ===== END NEW =====
 
     return fetch_result
 
-fetch_result = generate_fetch_result()
+fetch_result = generate_fetch_result(num_true)
 
 #core game variables
 round_count = 1
-player_score = 1
+player_score = 0
 game_start = time.perf_counter()
 
-while True:  
-    
-    name_list = [] #list used for value comparison 
-   
-     
+while True:
+
     for row in fetch_result:
         print(f"Airport name:   {row[0]} : country: {row[1]}  {'x' if row[2] == True else ' ' }") #Main print, sql query would need to have name as first, country code as second from country table
-      
-    for item in fetch_result:
-        if  item[2] == True:
-            name_list.append(item[0])
-    
-   
-    start_time = time.perf_counter() #score count timer using time plugin
-    try:
-        usr_input = inputimeout(prompt = "Please type in ICAO code: ", timeout = 100) #time out, we might add modes where for instance hard mode would have less time
-    except TimeoutOccurred:
-        print("Your time is up")
-        break
-    
-    elapsed_time = time.perf_counter() - start_time
-    
-    if usr_input in name_list: #string comparrison if statement, string comparison is case sensitive by default, I think it also coul be adjusted like, normal mode = capitalize all, hard = do nothing and it is case sensitive
-        
-        print(f'\n'+"That was correct!"+'\n')
-        print(f"Your score is: {player_score}"+'\n')
-        
-        for item in fetch_result:
-            if item[0] == usr_input:
-               index_check = fetch_result.index(item)
-               fetch_result.pop(index_check)
-        name_list = [item[0] for item in fetch_result if item[2]]
-               
-        print(f"How long did answer take in seconds: {elapsed_time:.2f}"+'\n')
-        player_score = player_score + math.floor(elapsed_time)        
-        round_count = round_count +1                   
-    else:
-        print('\n'+"Game Over"+'\n')
-        game_time =  time.perf_counter() - game_start 
+
+    # ===== NEW: correct answers list is taken from the AIRPORT NAME column (item[0]), order preserved =====
+    # Using a list (not a set) so duplicate names are allowed
+    answer_list = [item[0] for item in fetch_result if item[2] == True]
+    # ===== END NEW =====
+
+    correct_count = 0   # counts correct answers this round
+    missed = []          # country codes the player got wrong / missed
+    lost_on_timeout = False
+    round_start = time.perf_counter()
+
+    # ===== NEW: ask one question at a time, do NOT stop early on a wrong answer =====
+    for i, correct_answer in enumerate(answer_list):
+        # ===== NEW: remaining time = round limit minus time already spent this round =====
+        time_used_so_far = time.perf_counter() - round_start
+        time_left = round_time_limit - time_used_so_far
+
+        if time_left <= 0:
+            print("Your time is up")
+            lost_on_timeout = True
+            break
+        # ===== END NEW =====
+
+        try:
+            usr_input = inputimeout(
+                prompt=f"({i+1}/{len(answer_list)}) Type the full airport name ({time_left:.0f}s left): ",
+                timeout=time_left
+            )
+        except TimeoutOccurred:
+            print("Your time is up")
+            lost_on_timeout = True
+            break
+
+        if usr_input.strip().lower() == correct_answer.strip().lower():
+            print("Correct!\n")
+            correct_count += 1
+        else:
+            print("Wrong.\n")
+            missed.append(correct_answer)
+    # ===== END NEW =====
+
+    elapsed_time = time.perf_counter() - round_start
+
+    if lost_on_timeout:
+        game_time = time.perf_counter() - game_start
         print(f"Your total score is: {player_score}")
         print(f"Total game time: {game_time:.2f}"+'\n')
         break
-           
-    # print(fetch_result)
-    # print(icao_list)
-    
-    if len(name_list) == 0:
-        fetch_result = generate_fetch_result() #core function call to regenerate main game list
 
+    # ===== NEW: add points based on how many were correct, report what was missed =====
+    player_score = player_score + correct_count
+    print(f"This round you got {correct_count}/{len(answer_list)} correct.")
+    if missed:
+        print(f"You missed: {', '.join(missed)}")
+    print(f"Current total score: {player_score}\n")
+    print(f"How long did answer take in seconds: {elapsed_time:.2f}"+'\n')
+    # ===== END NEW =====
 
-   
-         
-    
-    if round_count == 6: 
+    round_count = round_count + 1
+
+    # Round is over, so generate a brand new set of 7 airports for the next round
+    fetch_result = generate_fetch_result(num_true)
+
+    if round_count == 6:
         print("Victory"+'\n')
-        game_time =  time.perf_counter() - game_start 
+        game_time =  time.perf_counter() - game_start
         print(f"Your total score is: {player_score}")
         print(f"Total game time: {game_time:.2f}"+'\n')
         break
