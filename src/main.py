@@ -25,6 +25,12 @@ try:
     cursor = connection.cursor()
     cursor.execute(sql)
     db_fetch_result = cursor.fetchall()
+    cursor.execute("SELECT name, score FROM save_files")
+    highscores = cursor.fetchall()
+    print("\n===== HIGHSCORES =====")
+    for name, score in highscores:
+        print(f"{name}: {score}")
+        print("======================\n")
 except:
 
     if cursor.rowcount == 0:
@@ -113,6 +119,18 @@ fetch_result = generate_fetch_result(num_true)
 round_count = 1
 player_score = 0
 game_start = time.perf_counter()
+def save_game_result():
+    name = input("Enter your name:") . strip()
+    did_win = round_count == 6
+    cursor.execute(
+        """
+        INSERT INTO save_files (name, score, did_win)
+        VALUES (%s, %s, %s)
+        """,
+        (name, str(player_score), did_win)
+    )
+    connection.commit()
+    print("Your score has been saved!")
 
 while True:
 
@@ -186,4 +204,5 @@ while True:
         game_time =  time.perf_counter() - game_start
         print(f"Your total score is: {player_score}")
         print(f"Total game time: {game_time:.2f}"+'\n')
+        save_game_result()
         break
