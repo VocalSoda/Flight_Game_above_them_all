@@ -1,6 +1,6 @@
 #Database handling to be added through .env
 #Import dotenv and os modules
-
+import pygame
 import random
 from inputimeout import inputimeout, TimeoutOccurred
 import time
@@ -8,6 +8,37 @@ import math
 import os
 from dotenv import load_dotenv
 import mysql.connector
+pygame.font.init()
+pygame.init()
+
+screen = pygame.display.set_mode()
+clock = pygame.time.Clock()
+running = True
+
+world_map_image = pygame.image.load('src/resources/images/world.png')
+
+x, y = screen.get_size()
+print(x, y)
+world_map_image = pygame.transform.scale_by(world_map_image, 0.5)
+
+font1 = pygame.font.SysFont('./resources/fonts/Space_Mono/SpaceMono-Regular.ttf', 50)   
+
+def render_text(content: str, position):
+    text1 = font1.render(content, True, (0, 255, 0))
+    textRect1 = text1.get_rect()
+    
+    textRect1.topleft = position
+    #textRect1.center = (0, 250)
+
+    screen.blit(text1, textRect1)
+
+
+def render_map():
+    screen.blit(world_map_image, (0,0))
+
+
+
+
 
 load_dotenv()
 #Remember to have same key names in your .env file
@@ -20,7 +51,7 @@ connection = mysql.connector.connect(
 
 db_fetch_result = []
 
-sql = "SELECT name, iso_country FROM airport"
+sql = "SELECT * FROM airport LIMIT 10;"
 try:
     cursor = connection.cursor()
     cursor.execute(sql)
@@ -45,8 +76,7 @@ for index, item in enumerate(db_fetch_result):
     index_list.append(index)
 
 
-# ===== NEW: CHOOSE GAME MODE =====
-# mode_map maps the player's choice (1/2/3) to (how many correct answers, seconds allowed per round)
+
 mode_map = {
     "1": (1, 50),   # Easy:   1 correct answer,  50 seconds per round
     "2": (3, 40),   # Medium: 3 correct answers, 40 seconds per round
@@ -64,7 +94,7 @@ while True:
         num_true, round_time_limit = mode_map[mode_choice]
         break
     print("Please enter 1, 2 or 3.")
-# ===== END NEW =====
+
 
 
 #core game list function, previously was made into 2 separate loops. Now can be called from inside the loop main loop.
