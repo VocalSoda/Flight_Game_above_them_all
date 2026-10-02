@@ -7,18 +7,18 @@ import math
 import os
 from dotenv import load_dotenv
 import mysql.connector
-
+import sys
 load_dotenv()
 
 pygame.font.init()
 pygame.init()
 
-screen = pygame.display.set_mode()
+screen = pygame.display.set_mode((1920, 1080))
 clock = pygame.time.Clock()
 running = True
 
 world_map_image = pygame.image.load('src/resources/images/mercator.png')
-font1 = pygame.font.SysFont('./resources/fonts/Space_Mono/SpaceMono-Regular.ttf', 50)   
+font1 = pygame.font.SysFont('./resources/fonts/Space_Mono/SpaceMono-Regular.ttf', 30)   
 x, y = screen.get_size()
 
 scalar = screen.get_height() / world_map_image.get_height()
@@ -30,15 +30,7 @@ map_width = world_map_image.get_width()
 
 
 
-def rand_num():
-    rand = None
-    for num in range(2, 8):
-        if num % 2 == 0:
-            return True
-        else:
-            return False
-
-
+rand_range = [2, 3, 4, 5, 6, 7, 8]
 
 
 connection = mysql.connector.connect(
@@ -53,7 +45,7 @@ def render_map():
 
 db_fetch_result = []
 
-sql = "SELECT * FROM airport LIMIT 2;"
+sql = "SELECT * FROM airport order by RAND() limit 3;"
 try:
     cursor = connection.cursor()
     cursor.execute(sql)
@@ -66,32 +58,22 @@ except:
 
         quit()
         
-print(db_fetch_result)
 
-
-cords_on_map = []
-
-cords_list = []
-for item in db_fetch_result:
-    cords_list.append([item[4], item[5]])
     
-
-print(cords_list)
-    
-    
-    
-def render_text(content: str, position):
+def render_text(content: str, x, y):
     text1 = font1.render(content, True, (0, 255, 0))
     textRect1 = text1.get_rect()
     
-    textRect1.topleft = position
+    textRect1.center = x, y
 
     screen.blit(text1, textRect1)
     
     
 def render_circle(x, y):
-    circle =  pygame.draw.circle(screen, (0, 255, 0), (x, y),  10, 10,)
+   circle =  pygame.draw.circle(screen, (0, 255, 0), (x, y),  10, 10,)
+   return circle
 
+        
     
 def coordinates_to_pixels(lat, lon):
     lat = max(min(lat, 85.051129), -85.051129)
@@ -105,21 +87,55 @@ def coordinates_to_pixels(lat, lon):
     
     return (x,y)
 
+
+
+cords_on_map = []
+
+cords_list = []
+for item in db_fetch_result:
+    cords_list.append([item[4], item[5]])
+
+
+
+
+
 for item in cords_list:
 
-    pixel_coordinates = coordinates_to_pixels(item[0], item[1])    
+    pixel_coordinates = coordinates_to_pixels(item[0], item[1])       
+    # if rand_num():
+    #     print(rand_num())
     cords_on_map.append([pixel_coordinates[0], pixel_coordinates[1]])
-    
+        
 
-print(cords_on_map)
+
+name_list = []
+
+for item in db_fetch_result:
+    name_list.append(item[3])
+
+print(name_list)
+
+
+
 
 while running:
-    screen.fill((255, 0, 0))
+    screen.fill((0, 0, 0))
+    mouse_pos = pygame.mouse.get_pos()
+    mouse_buttons = pygame.mouse.get_pressed()  
     render_map()
     
-    for item in cords_on_map:
+    for name, (x, y) in zip(name_list, cords_on_map):
         
-        render_circle(item[0], item[1])
+      
+        circle = render_circle(x, y)
+        if circle.collidepoint(mouse_pos):
+            render_text(name, x, y+20)
+            if mouse_buttons[0]:
+                running = False
+            
+                
+     
+        
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
