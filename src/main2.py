@@ -77,10 +77,12 @@ def render_text_allign_left(content: str, x, y):
 
     screen.blit(text1, textRect1)
 
+
+
 def render_text_w_bg(content: str, x, y, color):
     text1 = font1.render(content, True, color)
-    textRect1 = text1.get_rect()
-    bg_rect = textRect1.inflate(50, 16)
+    textRect1 = text1.get_rect(center=(x, y))
+    bg_rect = textRect1.inflate(5, 5)
     pygame.draw.rect(screen, (255, 255, 255), bg_rect, border_radius=6)
     textRect1.center = x, y
 
@@ -149,7 +151,7 @@ while len(color_check) < len(cords_on_map):
     if random.choice("1234") == "2":
         color_check.append([255, 0, 0])
     else:
-        color_check.append([0, 255, 0])       
+        color_check.append([0, 0, 255])       
     
 print(color_check)    
 def render_circle(color, x, y):  
@@ -200,7 +202,7 @@ while running:
                 else:          
                     circle = render_circle(color, x, y)
                     if circle.collidepoint(mouse_pos):
-                        render_text(name, x, y+20, color)
+                        render_text_w_bg(name, x, y+20, color)
                         
                         
     if [255, 0, 0] not in color_check:
