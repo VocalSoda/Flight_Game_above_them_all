@@ -10,15 +10,14 @@ import mysql.connector
 import sys
 load_dotenv()
 
-pygame.font.init()
 pygame.init()
 
 screen = pygame.display.set_mode((1920, 1080))
 clock = pygame.time.Clock()
 running = True
 
-world_map_image = pygame.image.load('src/resources/images/mercator.png')
-font1 = pygame.font.SysFont('./resources/fonts/Space_Mono/SpaceMono-Regular.ttf', 30)   
+world_map_image = pygame.image.load('./src/resources/images/mercator.png')
+font1 = pygame.font.Font('./src/resources/fonts/Space_Mono/SpaceMono-Regular.ttf', 30)
 x, y = screen.get_size()
 
 scalar = screen.get_height() / world_map_image.get_height()
