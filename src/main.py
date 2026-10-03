@@ -1,208 +1,471 @@
-#Database handling to be added through .env
-#Import dotenv and os modules
-
-import random
-from inputimeout import inputimeout, TimeoutOccurred
-import time
 import math
 import os
-from dotenv import load_dotenv
+import random
+import time
+
 import mysql.connector
+import pygame
+from dotenv import load_dotenv
 
 load_dotenv()
-#Remember to have same key names in your .env file
-connection = mysql.connector.connect(
-    host = os.getenv("HOST"),
-    user = os.getenv("USER"),
-    password = os.getenv("PASS"),
-    database = os.getenv("DB")
-)
 
-db_fetch_result = []
+RED = (255, 0, 0)
+BLUE = (0, 0, 255)
+GREEN = (0, 255, 0)
+WHITE = (255, 255, 255)
+ORANGE = (247, 130, 0)
+DARK = (20, 20, 20)
 
-sql = "SELECT name, iso_country FROM airport"
-try:
-    cursor = connection.cursor()
-    cursor.execute(sql)
-    db_fetch_result = cursor.fetchall()
-    cursor.execute("SELECT name, score FROM save_files")
-    highscores = cursor.fetchall()
-    print("\n===== HIGHSCORES =====")
-    for name, score in highscores:
-        print(f"{name}: {score}")
-        print("======================\n")
-except:
-
-    if cursor.rowcount == 0:
-        print("Check SQL command")
-    elif connection.cursor != True:
-        print("Check db credentials, they must match the names used in the .env file")
-        quit()
-
-fetch_to_list = []
-for item in db_fetch_result:
-     fetch_to_list.append(list(item))
-
-
-
-index_list = []
-#index list keeps track of used/available indexes
-for index, item in enumerate(db_fetch_result):
-    index_list.append(index)
-
-
-# ===== NEW: CHOOSE GAME MODE =====
-# mode_map maps the player's choice (1/2/3) to (how many correct answers, seconds allowed per round)
-mode_map = {
-    "1": (1, 50),   # Easy:   1 correct answer,  50 seconds per round
-    "2": (3, 40),   # Medium: 3 correct answers, 40 seconds per round
-    "3": (5, 30),   # Hard:   5 correct answers, 30 seconds per round
+DIFFICULTIES = {
+    1: ("Easy", 60, 1),
+    2: ("Medium", 40, 3),
+    3: ("Hard", 30, 5),
 }
 
-print("Choose a game mode:")
-print("1 - Easy   (1 correct answer,  50 seconds per round)")
-print("2 - Medium (3 correct answers, 40 seconds per round)")
-print("3 - Hard   (5 correct answers, 30 seconds per round)")
+pygame.init()
 
-while True:
-    mode_choice = input("Enter mode (1/2/3): ").strip()
-    if mode_choice in mode_map:
-        num_true, round_time_limit = mode_map[mode_choice]
-        break
-    print("Please enter 1, 2 or 3.")
-# ===== END NEW =====
+screen = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
+clock = pygame.time.Clock()
 
+base_map = pygame.image.load("./src/resources/images/mercator.png").convert()
+font = pygame.font.Font("./src/resources/fonts/Space_Mono/SpaceMono-Regular.ttf", 30)
 
-#core game list function, previously was made into 2 separate loops. Now can be called from inside the loop main loop.
-# 7 items are best to show imo as it seems to be ideal range where you can see whole list, without needing to scroll
-
-# ===== NEW: split the "mark one correct answer" logic into its own function =====
-# This function randomly picks one airport that is NOT yet marked True, and marks it True.
-# If everything is already True, it does nothing (avoids random.choice on an empty list).
-def mark_one_correct(fetch_result):
-    unmarked = [i for i, item in enumerate(fetch_result) if item[2] == False]
-    if unmarked:
-        chosen = random.choice(unmarked)
-        fetch_result[chosen][2] = True
-# ===== END NEW =====
-
-def generate_fetch_result(num_true):
-    fetch_result = [] #main list used for printing data and data comparison
-
-    while len(fetch_result) < 7:
-        try:
-            rand_index = random.choice(index_list)
-            index_list.remove(rand_index)
-        except:
-            print("Empty sequence")
-            break
-        try:
-            fetch_result.append(fetch_to_list[rand_index])
-        except:
-            pass
-
-    # Initialize everything as False first
-    for item in fetch_result:
-        item.append(False)
-
-    # ===== NEW: call mark_one_correct num_true times =====
-    # mode 1 -> called once, mode 2 -> called 3 times, mode 3 -> called 5 times
-    for _ in range(num_true):
-        mark_one_correct(fetch_result)
-    # ===== END NEW =====
-
-    return fetch_result
-
-fetch_result = generate_fetch_result(num_true)
-
-#core game variables
-round_count = 1
-player_score = 0
-game_start = time.perf_counter()
-def save_game_result():
-    name = input("Enter your name:") . strip()
-    did_win = round_count == 6
-    cursor.execute(
-        """
-        INSERT INTO save_files (name, score, did_win)
-        VALUES (%s, %s, %s)
-        """,
-        (name, str(player_score), did_win)
+def connect():
+    return mysql.connector.connect(
+        host=os.getenv("HOST"),
+        user=os.getenv("USER"),
+        password=os.getenv("PASS"),
+        database=os.getenv("DB"),
     )
+
+
+def load_airports():
+    connection = connect()
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "SELECT ident, name, latitude_deg, longitude_deg FROM airport "
+        "WHERE name REGEXP '^[A-Za-z0-9 .-]+$' "
+        "AND ident REGEXP '^[A-Za-z0-9 .-]+$' "
+        "ORDER BY RAND() LIMIT 7"
+    )
+
+    rows = cursor.fetchall()
+    connection.close()
+
+    return rows
+
+
+def load_high_scores():
+    connection = connect()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "SELECT name, score, time FROM save_files ORDER BY score DESC, time ASC LIMIT 10"
+    )
+
+    rows = cursor.fetchall()
+    connection.close()
+
+    return rows
+
+
+def save_score(name, score, seconds):
+    connection = connect()
+
+    cursor = connection.cursor()
+
+    cursor.execute(
+        "INSERT INTO save_files (name, score, time, did_win) VALUES (%s, %s, %s, 1)",
+        (name, score, round(seconds, 1)),
+    )
+
     connection.commit()
-    print("Your score has been saved!")
+    connection.close()
 
-while True:
 
-    for row in fetch_result:
-        print(f"Airport name:   {row[0]} : country: {row[1]}  {'x' if row[2] == True else ' ' }") #Main print, sql query would need to have name as first, country code as second from country table
+def lat_lon_to_pixels(lat, lon):
+    lat = max(min(lat, 85.051129), -85.051129)
 
-    # ===== NEW: correct answers list is taken from the AIRPORT NAME column (item[0]), order preserved =====
-    # Using a list (not a set) so duplicate names are allowed
-    answer_list = [item[0] for item in fetch_result if item[2] == True]
-    # ===== END NEW =====
+    x = (lon + 180.0) * (MAP_W / 360.0)
 
-    correct_count = 0   # counts correct answers this round
-    missed = []          # country codes the player got wrong / missed
-    lost_on_timeout = False
-    round_start = time.perf_counter()
+    merc = math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
 
-    # ===== NEW: ask one question at a time, do NOT stop early on a wrong answer =====
-    for i, correct_answer in enumerate(answer_list):
-        # ===== NEW: remaining time = round limit minus time already spent this round =====
-        time_used_so_far = time.perf_counter() - round_start
-        time_left = round_time_limit - time_used_so_far
+    y = MAP_H / 2 - MAP_W * merc / (2 * math.pi)
 
-        if time_left <= 0:
-            print("Your time is up")
-            lost_on_timeout = True
+    return x, y
+
+
+def update_positions():
+    for airport in airports:
+        airport["pos"] = lat_lon_to_pixels(airport["lat"], airport["lon"])
+
+    spread_airports()
+
+
+def spread_airports():
+    for _ in range(20):
+        moved = False
+        for i in range(len(airports)):
+            for j in range(i + 1, len(airports)):
+                ax, ay = airports[i]["pos"]
+                bx, by = airports[j]["pos"]
+
+                dx, dy = bx - ax, by - ay
+
+                dist = math.hypot(dx, dy)
+
+                if 0 < dist < 90:
+                    push = (90 - dist) / 2
+
+                    ux, uy = dx / dist, dy / dist
+
+                    airports[i]["pos"] = (ax - ux * push, ay - uy * push)
+                    airports[j]["pos"] = (bx + ux * push, by + uy * push)
+
+                    moved = True
+
+        if not moved:
             break
-        # ===== END NEW =====
 
-        try:
-            usr_input = inputimeout(
-                prompt=f"({i+1}/{len(answer_list)}) Type the full airport name ({time_left:.0f}s left): ",
-                timeout=time_left
-            )
-        except TimeoutOccurred:
-            print("Your time is up")
-            lost_on_timeout = True
-            break
 
-        if usr_input.strip().lower() == correct_answer.strip().lower():
-            print("Correct!\n")
-            correct_count += 1
+def resize():
+    global world_map, MAP_W, MAP_H
+
+    h = screen.get_height()
+    scale = h / base_map.get_height()
+
+    world_map = pygame.transform.scale_by(base_map, scale)
+
+    MAP_W, MAP_H = world_map.get_size()
+
+    update_positions()
+
+
+def start_game(difficulty):
+    global airports, active, text, feedback, state, start_time, time_limit, score
+
+    airports = [
+        {
+            "icao": icao,
+            "name": name,
+            "lat": lat,
+            "lon": lon,
+            "infected": False,
+            "destroyed": False,
+        }
+        for icao, name, lat, lon in load_airports()
+    ]
+
+    _, time_limit, num_infected = DIFFICULTIES[difficulty]
+
+    for airport in random.sample(airports, num_infected):
+        airport["infected"] = True
+
+    update_positions()
+    active = None
+    text = ""
+    feedback = ""
+    score = 0
+    start_time = time.perf_counter()
+    state = "playing"
+
+
+def select_by_icao(text):
+    for airport in airports:
+        if not airport["destroyed"] and airport["icao"].lower() == text.lower():
+            return airport
+
+    return None
+
+
+def best_icao_match(text):
+    if not text:
+        return []
+
+    best = []
+    best_len = -1
+    typed = text.lower()
+
+    for airport in airports:
+        if airport["destroyed"]:
+            continue
+
+        icao = airport["icao"].lower()
+        n = 0
+
+        while n < len(typed) and n < len(icao) and icao[n] == typed[n]:
+            n += 1
+        if n > best_len:
+            best = [airport]
+            best_len = n
+        elif n == best_len and n > 0:
+            best.append(airport)
+
+    return best
+
+
+def submit(active, text):
+    if text.strip().lower() != active["name"].lower():
+        return active, "", "Wrong name.", False
+    if not active["infected"]:
+        return active, "", "Not infected.", False
+
+    active["destroyed"] = True
+
+    return None, "", "Destroyed!", True
+
+
+def render_boxed_text(content, color, center, midleft=False):
+    surface = font.render(content, True, color)
+    rect = surface.get_rect(midleft=center) if midleft else surface.get_rect(center=center)
+
+    bg_rect = rect.inflate(10, 6)
+    bg_rect.clamp_ip(screen.get_rect())
+
+    rect.clamp_ip(bg_rect)
+
+    pygame.draw.rect(screen, DARK, bg_rect, border_radius=6)
+
+    screen.blit(surface, rect)
+
+
+def render_match_text(target, typed, center):
+    total = font.render(target, True, WHITE)
+
+    rect = total.get_rect(center=center)
+
+    bg_rect = rect.inflate(10, 6)
+    bg_rect.clamp_ip(screen.get_rect())
+
+    pygame.draw.rect(screen, DARK, bg_rect, border_radius=6)
+
+    x = rect.left
+
+    for i, ch in enumerate(target):
+        if i < len(typed):
+            color = GREEN if typed[i].lower() == ch.lower() else RED
         else:
-            print("Wrong.\n")
-            missed.append(correct_answer)
-    # ===== END NEW =====
+            color = WHITE
 
-    elapsed_time = time.perf_counter() - round_start
+        char = font.render(ch, True, color)
+        screen.blit(char, (x, rect.top))
 
-    if lost_on_timeout:
-        game_time = time.perf_counter() - game_start
-        print(f"Your total score is: {player_score}")
-        print(f"Total game time: {game_time:.2f}"+'\n')
-        break
+        x += char.get_width()
 
-    # ===== NEW: add points based on how many were correct, report what was missed =====
-    player_score = player_score + correct_count
-    print(f"This round you got {correct_count}/{len(answer_list)} correct.")
-    if missed:
-        print(f"You missed: {', '.join(missed)}")
-    print(f"Current total score: {player_score}\n")
-    print(f"How long did answer take in seconds: {elapsed_time:.2f}"+'\n')
-    # ===== END NEW =====
 
-    round_count = round_count + 1
+def render_airports():
+    best_list = best_icao_match(text) if active is None else []
 
-    # Round is over, so generate a brand new set of 7 airports for the next round
-    fetch_result = generate_fetch_result(num_true)
+    for airport in airports:
+        if airport["destroyed"]:
+            continue
 
-    if round_count == 6:
-        print("Victory"+'\n')
-        game_time =  time.perf_counter() - game_start
-        print(f"Your total score is: {player_score}")
-        print(f"Total game time: {game_time:.2f}"+'\n')
-        save_game_result()
-        break
+        x, y = airport["pos"]
+
+        if airport is active:
+            pygame.draw.circle(screen, WHITE, (x, y), 14, 3)
+        pygame.draw.circle(screen, RED if airport["infected"] else BLUE, (x, y), 10)
+
+        if active is None and airport in best_list:
+            render_match_text(airport["icao"], text, (x, y + 25))
+        else:
+            render_boxed_text(airport["icao"], WHITE, (x, y + 25))
+
+    if active is not None:
+        x, y = active["pos"]
+
+        render_boxed_text(active["name"], WHITE, (x, y - 35), midleft=True)
+        render_boxed_text(text, ORANGE, (x, y - 70), midleft=True)
+
+
+def render_menu():
+    cx = screen.get_width() // 2
+
+    title = font.render("Airport Hunter", True, WHITE)
+    screen.blit(title, title.get_rect(center=(cx, 200)))
+
+    y = 350
+
+    for key, (name, seconds, infected) in DIFFICULTIES.items():
+        line = font.render(f"{key}. {name}: {infected} infected, {seconds}s", True, GREEN)
+        screen.blit(line, line.get_rect(center=(cx, y)))
+
+        y += 60
+
+
+def render_high_scores():
+    x = MAP_W + 30
+
+    header = font.render("HIGH SCORES", True, ORANGE)
+    screen.blit(header, (x, 30))
+
+    y = 90
+
+    for rank, (name, score_value, seconds) in enumerate(high_scores, 1):
+        line = font.render(f"{rank}. {name or '???'} {score_value}pts {seconds}s", True, WHITE)
+        screen.blit(line, (x, y))
+
+        y += 40
+
+
+def render_hud():
+    destroyed = sum(a["destroyed"] for a in airports)
+    total = sum(a["infected"] for a in airports)
+    time_left = max(0, time_limit - (time.perf_counter() - start_time))
+
+    counter = font.render(
+        f"{destroyed}/{total} infected destroyed   {time_left:.0f}s left", True, WHITE
+    )
+
+    screen.blit(counter, (20, 20))
+
+    if active is None:
+        prompt = "Type ICAO to select an airport, Enter to confirm"
+    else:
+        prompt = f"Type the name of {active['icao']}"
+
+    render_boxed_text(prompt, GREEN, (screen.get_width() // 2, 30))
+
+    if feedback:
+        render_boxed_text(feedback, WHITE, (screen.get_width() // 2, 70))
+
+
+def render_game_over():
+    cx, cy = screen.get_width() // 2, screen.get_height() // 2
+
+    if state == "won":
+        title = font.render(f"YOU WIN! Score: {score}  Time: {elapsed:.1f}s", True, GREEN)
+    else:
+        title = font.render(f"TIME'S UP! Score: {score}", True, RED)
+
+    screen.blit(title, title.get_rect(center=(cx, cy - 40)))
+    hint = font.render("Press Enter to return to menu", True, WHITE)
+
+    screen.blit(hint, hint.get_rect(center=(cx, cy + 20)))
+
+
+def render_name_entry():
+    cx, cy = screen.get_width() // 2, screen.get_height() // 2
+
+    title = font.render(f"YOU WIN! Score: {score}  Time: {elapsed:.1f}s", True, GREEN)
+    screen.blit(title, title.get_rect(center=(cx, cy - 80)))
+
+    prompt = font.render("Enter your name:", True, WHITE)
+    screen.blit(prompt, prompt.get_rect(center=(cx, cy)))
+
+    name = player_name or "_"
+    name_surface = font.render(name, True, ORANGE)
+
+    screen.blit(name_surface, name_surface.get_rect(center=(cx, cy + 50)))
+
+    hint = font.render("Type name, then press Enter", True, WHITE)
+
+    screen.blit(hint, hint.get_rect(center=(cx, cy + 100)))
+
+
+airports = []
+active = None
+text = ""
+feedback = ""
+state = "menu"
+player_name = ""
+score = 0
+elapsed = 0
+start_time = 0
+time_limit = 0
+resize()
+high_scores = load_high_scores()
+running = True
+
+while running:
+    for event in pygame.event.get():
+        if event.type == pygame.QUIT:
+            running = False
+
+        elif event.type == pygame.VIDEORESIZE:
+            resize()
+
+        elif event.type == pygame.KEYDOWN:
+            if state == "menu":
+                if event.key in (pygame.K_1, pygame.K_2, pygame.K_3):
+                    start_game(event.key - pygame.K_0)
+
+            elif state == "name_entry":
+                if event.key == pygame.K_RETURN:
+                    save_score(player_name, score, elapsed)
+                    high_scores = load_high_scores()
+                    state = "menu"
+
+                elif event.key == pygame.K_BACKSPACE:
+                    player_name = player_name[:-1]
+
+                elif event.unicode.isalnum() and len(player_name) < 3:
+                    player_name += event.unicode.upper()
+
+            elif state in ("won", "lost"):
+                if event.key == pygame.K_RETURN:
+                    state = "menu"
+                    high_scores = load_high_scores()
+
+            elif state == "playing":
+                if event.key == pygame.K_ESCAPE:
+                    active = None
+                    text = ""
+                    feedback = ""
+
+                elif event.key == pygame.K_RETURN:
+                    if active is None:
+                        selected = select_by_icao(text)
+
+                        if selected is not None:
+                            active = selected
+                            text = ""
+                            feedback = ""
+
+                        else:
+                            text = ""
+                            feedback = "Unknown ICAO"
+
+                    else:
+                        active, text, feedback, destroyed = submit(active, text)
+
+                        score += destroyed
+
+                elif event.key == pygame.K_BACKSPACE:
+                    text = text[:-1]
+
+                else:
+                    text += event.unicode
+
+    if state == "playing":
+        elapsed = time.perf_counter() - start_time
+
+        destroyed = sum(a["destroyed"] for a in airports)
+        total_infected = sum(a["infected"] for a in airports)
+
+        if destroyed == total_infected:
+            state = "name_entry"
+            player_name = ""
+        elif elapsed >= time_limit:
+            state = "lost"
+
+    screen.fill((0, 0, 0))
+    screen.blit(world_map, (0, 0))
+    render_high_scores()
+
+    if state == "menu":
+        render_menu()
+    elif state == "playing":
+        render_airports()
+        render_hud()
+    elif state == "name_entry":
+        render_airports()
+        render_name_entry()
+    else:
+        render_airports()
+        render_game_over()
+
+    pygame.display.update()
+    clock.tick(60)
