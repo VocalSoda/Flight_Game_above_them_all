@@ -265,8 +265,8 @@ def render_airports():
         x, y = airport["pos"]
 
         if airport is active:
-            pygame.draw.circle(screen, WHITE, (x, y), 14, 3)
-        pygame.draw.circle(screen, RED if airport["infected"] else BLUE, (x, y), 10)
+            pygame.draw.circle(screen, WHITE, (x, y), 15, 3)
+        pygame.draw.circle(screen, RED if airport["infected"] else BLUE, (x, y), 15)
 
         if active is None and airport in best_list:
             render_match_text(airport["icao"], text, (x, y + 25))
@@ -282,10 +282,13 @@ def render_airports():
 
 def render_menu():
     cx = screen.get_width() // 2
-
     title = font.render("Airport Hunter", True, WHITE)
-    screen.blit(title, title.get_rect(center=(cx, 200)))
-
+    rect = title.get_rect(center=(cx, 200))
+    bg_rect = rect.inflate(screen.get_width()/5, screen.get_height()/3)
+    bg_rect.top = rect.top
+    pygame.draw.rect(screen, DARK, bg_rect,border_radius=10)
+    pygame.draw.rect(screen, (255, 255, 255), bg_rect, width=5, border_radius=10)
+    screen.blit(title, rect)
     y = 350
 
     for key, (name, seconds, infected) in DIFFICULTIES.items():
