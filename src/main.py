@@ -23,7 +23,14 @@ DIFFICULTIES = {
 }
 
 pygame.init()
-
+pygame.mixer.init()
+explosion_sound = pygame.mixer.Sound("./src/resources/sounds/explosion.wav")
+wrong_sound = pygame.mixer.Sound("./src/resources/sounds/wrong.wav")
+correct_sound = pygame.mixer.Sound("./src/resources/sounds/correct.wav")
+select_sound = pygame.mixer.Sound("./src/resources/sounds/select.wav")
+win_sound = pygame.mixer.Sound("./src/resources/sounds/win.wav")
+lose_sound = pygame.mixer.Sound("./src/resources/sounds/lose.wav")
+time_warning_sound = pygame.mixer.Sound("./src/resources/sounds/time_warning.wav")
 screen = pygame.display.set_mode((1920, 1080), pygame.RESIZABLE)
 clock = pygame.time.Clock()
 
@@ -168,13 +175,16 @@ def start_game(difficulty):
     text = ""
     feedback = ""
     score = 0
+    time_warning_played = False
     start_time = time.perf_counter()
     state = "playing"
+    
 
 
 def select_by_icao(text):
     for airport in airports:
         if not airport["destroyed"] and airport["icao"].lower() == text.lower():
+            select_sound.play()
             return airport
 
     return None
@@ -208,12 +218,14 @@ def best_icao_match(text):
 
 def submit(active, text):
     if text.strip().lower() != active["name"].lower():
+        wrong_sound.play()
         return active, "", "Wrong name.", False
     if not active["infected"]:
         return active, "", "Not infected.", False
 
     active["destroyed"] = True
-
+    correct_sound.play()
+    explosion_sound.play()
     return None, "", "Destroyed!", True
 
 
@@ -373,6 +385,7 @@ active = None
 text = ""
 feedback = ""
 state = "menu"
+time_warning_played = False
 player_name = ""
 score = 0
 elapsed = 0
@@ -444,14 +457,18 @@ while running:
 
     if state == "playing":
         elapsed = time.perf_counter() - start_time
-
+        if time_limit - elapsed <= 10 and not time_warning_played: 
+            time_warning_sound.play()
+            time_warning_played = True
         destroyed = sum(a["destroyed"] for a in airports)
         total_infected = sum(a["infected"] for a in airports)
 
         if destroyed == total_infected:
+            win_sound.play()
             state = "name_entry"
             player_name = ""
         elif elapsed >= time_limit:
+            lose_sound.play()
             state = "lost"
 
     screen.fill((0, 0, 0))
