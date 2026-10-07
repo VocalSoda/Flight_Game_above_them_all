@@ -41,7 +41,7 @@ def connect():
     return mysql.connector.connect(
         host=os.getenv("HOST"),
         user=os.getenv("USER"),
-        password=os.getenv("PASS"),
+        password=os.getenv("PASSWORD"),
         database=os.getenv("DB"),
     )
 
@@ -76,6 +76,26 @@ def load_high_scores():
     connection.close()
 
     return rows
+def load_score_stats():
+    connection = connect()
+    cursor = connection.cursor()
+
+    cursor.execute(
+        """
+        SELECT
+            COUNT(*),
+            MAX(CAST(score AS UNSIGNED)),
+            AVG(CAST(score AS UNSIGNED)),
+            MIN(CAST(time AS DECIMAL(10,2)))
+        FROM save_files
+        """
+    )
+
+    stats = cursor.fetchone()
+    connection.close()
+
+    return stats
+    
 
 
 def save_score(name, score, seconds):
@@ -93,12 +113,14 @@ def save_score(name, score, seconds):
 
 
 def lat_lon_to_pixels(lat, lon):
+    lat = float(lat)
+    lon = float(lon)
+
     lat = max(min(lat, 85.051129), -85.051129)
 
     x = (lon + 180.0) * (MAP_W / 360.0)
 
-    merc = math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))
-
+    merc = math.log(math.tan((math.pi / 4) + (math.radians(lat) / 2)))
     y = MAP_H / 2 - MAP_W * merc / (2 * math.pi)
 
     return x, y
@@ -151,7 +173,9 @@ def resize():
 
 
 def start_game(difficulty):
-    global airports, active, text, feedback, state, start_time, time_limit, score
+    global airports, active, text, feedback, state, start_time, time_limit, score, attempts, hits, combo, difficulty_bonus, max_combo, difficulty_name, lives
+
+
 
     airports = [
         {
@@ -166,6 +190,8 @@ def start_game(difficulty):
     ]
 
     _, time_limit, num_infected = DIFFICULTIES[difficulty]
+    difficulty_name = DIFFICULTIES[difficulty][0]
+    difficulty_bonus = difficulty * 2
 
     for airport in random.sample(airports, num_infected):
         airport["infected"] = True
@@ -175,6 +201,11 @@ def start_game(difficulty):
     text = ""
     feedback = ""
     score = 0
+    attempts = 0
+    hits = 0
+    combo = 0
+    lives = 3
+    max_combo = 0
     time_warning_played = False
     start_time = time.perf_counter()
     state = "playing"
@@ -323,6 +354,36 @@ def render_high_scores():
         screen.blit(line, (x, y))
 
         y += 40
+        stats = load_score_stats()
+    stats = load_score_stats()
+    if stats and stats[0] > 0:
+        total_games = stats[0]
+        best_score = stats[1]
+        avg_score = int(stats[2])
+        best_time = stats[3]
+
+        stats_y = y + 20
+
+        games_text = font.render(
+            f"Games played: {total_games}", True, WHITE
+        )
+        screen.blit(games_text, (x, stats_y))
+
+        best_text = font.render(
+            f"Best score: {best_score}", True, GREEN
+        )
+        screen.blit(best_text, (x, stats_y + 30))
+
+        average_text = font.render(
+            f"Average score: {avg_score}", True, WHITE
+        )
+        screen.blit(average_text, (x, stats_y + 60))
+
+        time_text = font.render(
+            f"Best time: {best_time}s", True, WHITE
+        )
+        screen.blit(time_text, (x, stats_y + 90))
+            
 
 
 def render_hud():
@@ -335,7 +396,25 @@ def render_hud():
     )
 
     screen.blit(counter, (20, 20))
-
+    score_text = font.render(f"Score: {score}", True, ORANGE)
+    screen.blit(score_text, (20, 60))
+    lives_text = font.render(f"Lives: {lives}", True, RED)
+    screen.blit(lives_text, (20, 260))
+    if lives == 1:
+        warning_text = font.render("LAST LIFE!", True, RED)
+        screen.blit(warning_text, (20, 300))
+    combo_text = font.render(f"Combo: {combo}", True, ORANGE)
+    screen.blit(combo_text, (20, 140))
+    max_combo_text = font.render(f"Bst Combo: x{max_combo}", True, ORANGE)
+    screen.blit(max_combo_text, (20, 180))
+    difficulty_text = font.render(f"Difficulty: {difficulty_name}", True, WHITE)
+    screen.blit(difficulty_text, (20, 220))
+    if attempts > 0:
+        accuracy = int((hits / attempts) * 100)
+    else:
+        accuracy = 0
+    accuracy_text = font.render(f"Accuracy: {accuracy}%", True, GREEN)
+    screen.blit(accuracy_text, (20, 100))
     if active is None:
         prompt = "Type ICAO to select an airport, Enter to confirm"
     else:
@@ -356,9 +435,14 @@ def render_game_over():
         title = font.render(f"TIME'S UP! Score: {score}", True, RED)
 
     screen.blit(title, title.get_rect(center=(cx, cy - 40)))
+    accuracy_text = font.render(f"Accuracy: {final_accuracy}%", True, WHITE)
+    screen.blit(accuracy_text, accuracy_text.get_rect(center=(cx, cy + 10)))
+
+    performance_text = font.render(f"Performance: {performance}", True, ORANGE)
+    screen.blit(performance_text, performance_text.get_rect(center=(cx, cy + 45)))
     hint = font.render("Press Enter to return to menu", True, WHITE)
 
-    screen.blit(hint, hint.get_rect(center=(cx, cy + 20)))
+    screen.blit(hint, hint.get_rect(center=(cx, cy + 80)))
 
 
 def render_name_entry():
@@ -445,9 +529,26 @@ while running:
                             feedback = "Unknown ICAO"
 
                     else:
+                        attempts += 1
                         active, text, feedback, destroyed = submit(active, text)
-
-                        score += destroyed
+                        if not destroyed:
+                            combo = 0
+                            lives -= 1
+                            if lives <= 0:
+                                state = "lost"
+                                lose_sound.play()
+                        if destroyed:
+                            combo += 1
+                            if combo > max_combo:
+                                max_combo = combo
+                            hits += 1
+                            time_left = max(0, time_limit - elapsed)
+                            bonus = int(time_left / 10)
+                            score += 10 + bonus + difficulty_bonus 
+                        
+                            if combo >=3:
+                                score += 5
+                                
 
                 elif event.key == pygame.K_BACKSPACE:
                     text = text[:-1]
@@ -462,6 +563,18 @@ while running:
             time_warning_played = True
         destroyed = sum(a["destroyed"] for a in airports)
         total_infected = sum(a["infected"] for a in airports)
+        if attempts > 0:
+            final_accuracy = int((hits / attempts) * 100)
+        else:
+            final_accuracy = 0
+            if final_accuracy >= 90:
+                performance = "Excellent"
+            elif final_accuracy >= 70:
+                performance = "Good"
+            elif final_accuracy >= 50:
+                performance = "Okay"
+            else:
+                performance = "needs practice"
 
         if destroyed == total_infected:
             win_sound.play()
